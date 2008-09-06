@@ -1,0 +1,38 @@
+// Begin example 1: This is an example of how to use KImageSlideShow
+
+// Both the kslideshow.h and kimageslideshow.h needs to be in your include path.
+#include "kimageslideshow.h" // this will include kslideshow.h as well.
+
+class YourWidget
+{
+  public:
+    ...
+  private:
+    ...
+    KImageSlideShow slide_show_;
+};
+
+YourWidget::YourWidget(...)
+{
+  ...
+  // Just add an directory, preloadig works automagical.
+  slide_show_.addDirectory("/path/to/images/");
+}
+
+void YourWidget::draw(QPainter* p, ...)
+{
+  ...
+  // Paint the images, use the preview functions to get the prev and next images without changing the current.
+  p->drawImage(10,10, slide_show_.previewPrevious() );
+  p->drawImage(30,30, slide_show_.current() );
+  p->drawImage(60,60, slide_show_.previewNext() );
+}
+
+void YourWidget::update(...)
+{
+  ...
+  // Step to the next image in the slideshow.
+  slide_show_.next();
+}
+
+// End of example 1
