@@ -9,8 +9,10 @@
 // Copyright: GPLv3
 //
 
-
 #include <QDir>
+#include <QThread>
+#include <QtConcurrentRun>
+
 #include "kslideshow.h"
 
 class KImageSlideShow : public KSlideShow<QImage>
@@ -27,6 +29,61 @@ class KImageSlideShow : public KSlideShow<QImage>
 
 		void addDirectory(const QString& path, bool recrusive = false)
 		{
+			dir_ = path;
+			recrusive_ = recrusive;
+			QtConcurrent::run(this,&KImageSlideShow::addDirectoryThread);
+		}
+
+		void setPreloadAmouth(int preload)
+		{
+			steps_left_preload_ = preload;
+			preload_ = preload;
+		}
+
+		QImage& next()
+		{
+			if( steps_left_preload_ == preload_*2 )
+			{
+				steps_left_preload_ = preload_;
+				QtConcurrent::run(this,&KImageSlideShow::preloadForward);
+				QtConcurrent::run(this,&KImageSlideShow::erasePreloadFromFront);
+			} else {
+				++steps_left_preload_;
+			}
+			return KSlideShow<QImage>::next();
+		}
+
+		QImage& previous()
+		{
+			if( steps_left_preload_ == 0 )
+			{
+				steps_left_preload_ = preload_;
+				QtConcurrent::run(this,&KImageSlideShow::preloadBackward);
+				QtConcurrent::run(this,&KImageSlideShow::erasePreloadFromBack);
+			} else {
+				--steps_left_preload_;
+			}
+			return KSlideShow<QImage>::previous();
+		}
+
+		// We are doing proloading so dont randomize the slides but randomize theset to preload from.
+		void setRandom(bool rand)
+		{
+			is_string_rand_ = rand;
+		
+			if(rand) {
+				randomize();
+			} else {
+				qSort(files_);
+			}
+		}
+
+	protected:
+		void addDirectoryThread()
+		{
+			QString path = dir_;
+			bool recrusive = recrusive_;
+
 			bool set_ite = false;
 			if( files_.isEmpty() ) set_ite = true;
 
@@ -65,57 +122,12 @@ class KImageSlideShow : public KSlideShow<QImage>
 				files_ite_previous_ = files_.end()-1;
 				// First time we preload we preload twice the normal amouth in both directions.
 				preloadForward();
-				preloadForward();
+				QtConcurrent::run(this,&KImageSlideShow::preloadForward);
 				preloadBackward();
-				preloadBackward();
+				QtConcurrent::run(this,&KImageSlideShow::preloadBackward);
 			}
 		}
 
-		void setPreloadAmouth(int preload)
-		{
-			steps_left_preload_ = preload;
-			preload_ = preload;
-		}
-
-		QImage& next()
-		{
-			if( steps_left_preload_ == preload_*2 )
-			{
-				steps_left_preload_ = preload_;
-				preloadForward();
-				erasePreloadFromFront();
-			} else {
-				++steps_left_preload_;
-			}
-			return KSlideShow<QImage>::next();
-		}
-
-		QImage& previous()
-		{
-			if( steps_left_preload_ == 0 )
-			{
-				steps_left_preload_ = preload_;
-				preloadBackward();
-				erasePreloadFromBack();
-			} else {
-				--steps_left_preload_;
-			}
-			return KSlideShow<QImage>::previous();
-		}
-
-		// We are doing proloading so dont randomize the slides but randomize theset to preload from.
-		void setRandom(bool rand)
-		{
-			is_string_rand_ = rand;
-		
-			if(rand) {
-				randomize();
-			} else {
-				qSort(files_);
-			}
-		}
-
-	protected:
 		void randomize()
 		{
 			KRandomSequence randomSequence;
@@ -180,4 +192,6 @@ class KImageSlideShow : public KSlideShow<QImage>
 		bool is_string_rand_;
 		QStringList filters_;
  		int steps_left_preload_;
+		QString dir_;
+		bool recrusive_;
 };
