@@ -1,0 +1,3 @@
+KSlideShow is an generic slideshow class for KDE.
+
+KImageSlideShow is an specialized version of KSlideShow for images with loading from directories and preloading.
