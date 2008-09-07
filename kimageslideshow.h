@@ -12,16 +12,18 @@
 #include <QDir>
 #include <QThread>
 #include <QtConcurrentRun>
+#include <QReadWriteLock>
 
 #include "kslideshow.h"
 
 class KImageSlideShow : public KSlideShow<QImage>
 {
 	public:
-		KImageSlideShow(bool rand = false)
+		KImageSlideShow(QSize size = QSize(0,0), bool rand = false)
 			: is_string_rand_(rand)
 			, preload_(3)
 			, steps_left_preload_(3)
+			, current_size_(size)
 		{
 			is_random_ = false; // disable the rand provided by KSlideShow, we override it..
 			filters_ << "*.jpeg" << "*.jpg" << "*.png" << "*.svg" << "*.svgz"; // use mime types?
@@ -74,7 +76,25 @@ class KImageSlideShow : public KSlideShow<QImage>
 			if(rand) {
 				randomize();
 			} else {
+				lock_.lockForWrite();
 				qSort(files_);
+				lock_.unlock();
+			}
+		}
+
+		void clear()
+		{
+			lock_.lockForWrite();
+			KSlideShow<QImage>::clear();
+			files_.clear();
+			lock_.unlock();
+		}
+
+		void setSize(QSize size)
+		{
+			if(current_size_ != size) {
+				// reload
+				current_size_ = size;
 			}
 		}
 
@@ -97,14 +117,18 @@ class KImageSlideShow : public KSlideShow<QImage>
 				return;
 			}
 
+			lock_.lockForWrite();
 			foreach (const QString &imageFile, dir.entryList(QDir::Files)) {
 				files_.append(QString(path + '/' + imageFile));
 			}
+			lock_.unlock();
 
 			if(is_string_rand_) {
+				lock_.lockForWrite();
 				KRandomSequence randomSequence;
 	
 				randomSequence.randomize( files_ );
+				lock_.unlock();
 				set_ite = true;
 			} else {
 				if( files_ite_previous_ == ite_last ) {
@@ -130,37 +154,62 @@ class KImageSlideShow : public KSlideShow<QImage>
 
 		void randomize()
 		{
+			lock_.lockForWrite();
 			KRandomSequence randomSequence;
 			randomSequence.randomize(files_);
+			lock_.unlock();
 		}
 
 		void preloadForward()
 		{
+			lock_.lockForWrite();
 			for(int i = 0; i < preload_+1 && files_ite_previous_ != files_ite_next_; ++i) {
 				if( ++files_ite_next_ != files_.end() ) {
-					addSlide( QImage( *files_ite_next_ ) );
+					addSlide(
+						bool(current_size_ == QSize(0,0))
+							? QImage( *files_ite_next_ )
+							: QImage( *files_ite_next_ ).scaled(current_size_,Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+					);
 				} else {
 					files_ite_next_ = files_.begin();
-					addSlide( QImage( *files_ite_next_ ) );
+					addSlide(
+						bool(current_size_ == QSize(0,0))
+							? QImage( *files_ite_next_ )
+							: QImage( *files_ite_next_ ).scaled(current_size_,Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+					);
 				}
 			}
+			lock_.unlock();
 		}
 
 		void preloadBackward()
 		{
+			lock_.lockForWrite();
 			for(int i = 0; i < preload_+1 && files_ite_previous_ != files_ite_next_; ++i) {
 				if( files_ite_previous_ != files_.begin() ) {
-					addSlideFront( QImage( *--files_ite_previous_ ) );
+// 					addSlideFront( QImage( *--files_ite_previous_ ) );
+					addSlideFront(
+						bool(current_size_ == QSize(0,0))
+							? QImage( *--files_ite_previous_ )
+							: QImage( *--files_ite_previous_ ).scaled(current_size_,Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+					);
 				} else {
 					files_ite_previous_ = files_.end();
-					addSlideFront( QImage( *--files_ite_previous_ ) );
+// 					addSlideFront( QImage( *--files_ite_previous_ ) );
+					addSlideFront(
+						bool(current_size_ == QSize(0,0))
+							? QImage( *--files_ite_previous_ )
+							: QImage( *--files_ite_previous_ ).scaled(current_size_,Qt::IgnoreAspectRatio, Qt::SmoothTransformation)
+					);
 				}
 			}
+			lock_.unlock();
 		}
 
 		// Remove the preloaded items from the front
 		void erasePreloadFromFront()
 		{
+			lock_.lockForWrite();
 			// if the iterators collide we cant remove items, as they all should be preloaded
 			if(files_ite_previous_ != files_ite_next_) {
 				for(int i = 0; i < preload_+1; ++i) {
@@ -169,11 +218,13 @@ class KImageSlideShow : public KSlideShow<QImage>
 					
 				}
 			}
+			lock_.unlock();
 		}
 
 		// Remove the preloaded items fron the back
 		void erasePreloadFromBack()
 		{
+			lock_.lockForWrite();
 			// if the iterators collide we cant remove items, as they all should be preloaded
 			if(files_ite_previous_ != files_ite_next_) {
 				for(int i = 0; i < preload_+1; ++i) {
@@ -182,16 +233,19 @@ class KImageSlideShow : public KSlideShow<QImage>
 
 				}
 			}
+			lock_.unlock();
 		}
 
 	private:
 		QStringList::iterator files_ite_next_;
 		QStringList::iterator files_ite_previous_;
 		QStringList files_;
-		int preload_;
 		bool is_string_rand_;
+		int preload_;
 		QStringList filters_;
  		int steps_left_preload_;
 		QString dir_;
 		bool recrusive_;
+		QReadWriteLock lock_;
+		QSize current_size_;
 };

@@ -115,7 +115,11 @@ class KSlideShow
 
 //  			emit currentRemoved(/*item*/);
 		}
-			
+		
+		void clear()
+		{
+			slides_.clear();
+		}
 //  		signals:
 //  			void currentRemoved(/*const U& removed*/);
 	protected:
